@@ -30,7 +30,7 @@
     .screen-title{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:.04em;color:var(--accent);}
 
     /* Pokemon grid */
-    .mon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:3px;margin:10px 0;}
+    .mon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:4px;margin:10px 0;}
     .mon{position:relative;aspect-ratio:1;border-radius:5px;border:2px solid transparent;cursor:pointer;background:var(--surface);transition:border-color .12s,opacity .15s;overflow:hidden;}
     .mon img{width:100%;height:100%;object-fit:contain;display:block;}
     .mon:hover{border-color:rgba(245,197,24,.5);}
@@ -71,6 +71,13 @@
     .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:var(--radius);font-size:13px;z-index:999;pointer-events:none;transition:opacity .3s;}
     .toast.ok{background:var(--ok);color:#000;}
     .toast.bad{background:var(--bad);color:#fff;}
+
+    /* Guess modal */
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;display:flex;flex-direction:column;padding:1rem;}
+    .modal-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;max-height:90vh;display:flex;flex-direction:column;gap:10px;}
+    .modal-title{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:.04em;color:var(--accent);}
+    .modal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:4px;overflow-y:auto;flex:1;}
+    .modal-confirm{display:flex;gap:8px;flex-shrink:0;}
 
     @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
     .fade{animation:fadeUp .3s ease both;}
@@ -353,14 +360,48 @@ function showGame(code, me, p1Id, p2Id) {
   };
 
   window._gw.guess = function() {
-    const input = prompt(`Who is your opponent's Pokémon?\n(type the name)`);
-    if (!input) return;
-    const guess = input.trim().toLowerCase().replace(/\s+/g, '-');
-    if (guess === oppMon.name || guess === oppMon.name.replace(/-/g, ' ')) {
-      update(ref(db, `games/${code}`), { winner: me });
-    } else {
-      toast(`"${input}" is wrong — keep asking!`, 'bad', 2500);
-    }
+    let guessId = null;
+
+    const candidates = allMon.filter(m => !elim.has(m.id));
+    const cells = candidates.map(m => `
+      <div class="mon" id="gmon-${m.id}" onclick="_gw.guessPick(${m.id})" title="${m.name}">
+        <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
+      </div>`).join('');
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-box">
+        <div class="modal-title">Who is it? Tap to select</div>
+        <div style="font-size:12px;color:var(--muted)">Showing ${candidates.length} non-eliminated Pokémon</div>
+        <div class="modal-grid">${cells}</div>
+        <div class="modal-confirm">
+          <button class="btn" style="flex:1" onclick="_gw.guessCancel()">Cancel</button>
+          <button class="btn hi" id="guess-confirm-btn" style="flex:1" onclick="_gw.guessConfirm()" disabled>Confirm guess</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    window._gw.guessPick = function(id) {
+      guessId = id;
+      modal.querySelectorAll('.mon').forEach(m => m.classList.remove('picked'));
+      modal.querySelector(`#gmon-${id}`)?.classList.add('picked');
+      document.getElementById('guess-confirm-btn').disabled = false;
+    };
+
+    window._gw.guessCancel = function() { modal.remove(); };
+
+    window._gw.guessConfirm = async function() {
+      if (!guessId) return;
+      modal.remove();
+      if (guessId === oppMon.id) {
+        update(ref(db, `games/${code}`), { winner: me });
+      } else {
+        const wrong = allMon.find(m => m.id === guessId);
+        toast(`Not ${wrong.name}! Turn passes to opponent.`, 'bad', 2500);
+        update(ref(db, `games/${code}`), { turn: me === 1 ? 2 : 1 });
+      }
+    };
   };
 }
 
