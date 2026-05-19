@@ -78,7 +78,23 @@
 </head>
 <body>
 <div id="app"></div>
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, set, get, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD1SKH7mMvRTZ1TBH5yEstjy3WdGmo6Rrw",
+  authDomain: "pokemon-guess-who-4b6d7.firebaseapp.com",
+  databaseURL: "https://pokemon-guess-who-4b6d7-default-rtdb.firebaseio.com",
+  projectId: "pokemon-guess-who-4b6d7",
+  storageBucket: "pokemon-guess-who-4b6d7.firebasestorage.app",
+  messagingSenderId: "339271698314",
+  appId: "1:339271698314:web:77216f28c16b286a76ea73"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getDatabase(fbApp);
+
 (function(){
 'use strict';
 
@@ -129,6 +145,11 @@ function copyText(text, btnId, label = 'Copied!') {
     });
 }
 
+// ── Firebase listener cleanup ──────────────────────────
+let unsubscribers = [];
+function clearListeners() { unsubscribers.forEach(u => u()); unsubscribers = []; }
+function listen(dbRef, cb) { unsubscribers.push(onValue(dbRef, cb)); }
+
 // ── Boot ───────────────────────────────────────────────
 async function boot() {
   app().innerHTML = `<div style="padding:3rem;text-align:center;color:var(--muted)">Loading Pokédex…</div>`;
@@ -136,22 +157,40 @@ async function boot() {
     const r = await fetch('https://pokeapi.co/api/v2/pokemon?limit=151');
     const d = await r.json();
     allMon = d.results.map((p, i) => ({ id: i + 1, name: p.name }));
-    route();
-  } catch {
+    await route();
+  } catch(e) {
     app().innerHTML = `<div style="padding:2rem;color:var(--bad)">Failed to load — check your connection.</div>`;
   }
 }
 
-function route() {
-  const p = getP();
-  if (p.has('a') && p.has('b') && p.has('me')) { showGame(); return; }
-  if (p.has('a') && !p.has('me')) { showPickP2(); return; }
-  showHome();
+async function route() {
+  const code = getP().get('code');
+  const me = parseInt(getP().get('me') || '0', 10);
+  if (!code) { showHome(); return; }
+
+  app().innerHTML = `<div style="padding:3rem;text-align:center;color:var(--muted)">Loading game…</div>`;
+  const snap = await get(ref(db, `games/${code}`));
+  const game = snap.val();
+
+  if (me === 1) {
+    if (!game?.p1) { showPickP1(code); return; }
+    if (!game?.p2) { showWaitP1(code, game.p1); return; }
+    showGame(code, 1, game.p1, game.p2);
+  } else if (me === 2) {
+    if (!game?.p1 || !game?.p2) { showHome(); return; }
+    showGame(code, 2, game.p1, game.p2);
+  } else {
+    // P2 joining via shared link
+    if (!game?.p1) { toast('Game not found — ask Player 1 for a new link', 'bad', 3000); showHome(); return; }
+    if (game?.p2) { setUrl({ code, me: 2 }); showGame(code, 2, game.p1, game.p2); return; }
+    showPickP2(code);
+  }
 }
 
 // ── Screens ────────────────────────────────────────────
 
 function showHome() {
+  clearListeners();
   app().innerHTML = `<div class="fade">
     <div style="margin-bottom:22px">
       <div class="big-title">Pokémon<br>Guess Who</div>
@@ -176,25 +215,24 @@ function showHome() {
   </div>`;
 }
 
-function showPickP1() {
+function showPickP1(code) {
   pickedId = null;
   app().innerHTML = `<div class="fade">
     <div class="row" style="margin-bottom:12px">
-      <button class="btn small" onclick="_gw.home()" style="font-size:12px;padding:5px 12px">← Back</button>
+      <button class="btn" onclick="_gw.home()" style="font-size:12px;padding:5px 12px">← Back</button>
       <span class="screen-title">Pick your Pokémon</span>
     </div>
     <p class="muted small" style="margin-bottom:8px">Choose carefully — and don't show your opponent! 🫣</p>
     ${monGridHTML(true)}
     <div id="pick-confirm" style="display:none;margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
       <div style="margin-bottom:10px">You picked: <strong id="pick-name" style="color:var(--accent);text-transform:capitalize"></strong></div>
-      <button class="btn hi" onclick="_gw.confirmP1()">Confirm & get link →</button>
+      <button class="btn hi" onclick="_gw.confirmP1('${code}')">Confirm & get link →</button>
     </div>
   </div>`;
 }
 
-function showPickP2() {
+function showPickP2(code) {
   pickedId = null;
-  const encA = getP().get('a');
   app().innerHTML = `<div class="fade">
     <div style="margin-bottom:12px">
       <div class="screen-title">You've been challenged!</div>
@@ -203,74 +241,52 @@ function showPickP2() {
     ${monGridHTML(true)}
     <div id="pick-confirm" style="display:none;margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
       <div style="margin-bottom:10px">You picked: <strong id="pick-name" style="color:var(--accent);text-transform:capitalize"></strong></div>
-      <button class="btn hi" onclick="_gw.confirmP2('${encA}')">Confirm & get links →</button>
+      <button class="btn hi" onclick="_gw.confirmP2('${code}')">Ready — start game →</button>
     </div>
   </div>`;
 }
 
-function showWaitP1(shareUrl) {
+function showWaitP1(code, p1Id) {
+  clearListeners();
+  const shareUrl = buildUrl({ code });
   urls.p1share = shareUrl;
   app().innerHTML = `<div class="fade">
-    <div class="screen-title" style="margin-bottom:6px">Send this to Player 2</div>
-    <p class="muted small" style="margin-bottom:10px">They'll pick their Pokémon, then send you a link back to start the game.</p>
+    <div class="screen-title" style="margin-bottom:6px">Waiting for Player 2…</div>
+    <p class="muted small" style="margin-bottom:12px">Send them this link. The game will start automatically once they pick their Pokémon.</p>
     <div class="share-box">${shareUrl}</div>
-    <button class="btn hi" id="btn-copy-share" onclick="_gw.copy('p1share','btn-copy-share')">Copy link</button>
-
-    <div class="gap">
-      <div class="field-label">Got Player 2's link? Paste it here to start</div>
-      <div class="row">
-        <input type="text" id="p2-return" placeholder="Paste Player 2's link…" />
-        <button class="btn" onclick="_gw.receiveReturn()">Go →</button>
-      </div>
-    </div>
+    <button class="btn hi" id="btn-copy-share" onclick="_gw.copy('p1share','btn-copy-share')" style="margin-bottom:20px">Copy link</button>
+    <div style="text-align:center;color:var(--muted);font-size:12px">⏳ Waiting for Player 2 to join…</div>
   </div>`;
-}
 
-function showShareBack(p1Url, p2Url) {
-  urls.p1game = p1Url;
-  urls.p2game = p2Url;
-  app().innerHTML = `<div class="fade">
-    <div class="screen-title" style="margin-bottom:6px">Almost ready!</div>
-    <p class="muted small" style="margin-bottom:16px">Send Player 1 their link, then open yours.</p>
-
-    <div class="field-label">Player 1's game link — send this to them</div>
-    <div class="share-box">${p1Url}</div>
-    <button class="btn" id="btn-copy-p1" onclick="_gw.copy('p1game','btn-copy-p1')" style="margin-bottom:18px">Copy Player 1's link</button>
-
-    <div class="field-label">Your game link</div>
-    <div class="share-box">${p2Url}</div>
-    <button class="btn hi" onclick="_gw.openP2()">Open my game →</button>
-  </div>`;
+  // Auto-advance when P2 picks
+  listen(ref(db, `games/${code}/p2`), snap => {
+    const p2Id = snap.val();
+    if (p2Id) {
+      clearListeners();
+      setUrl({ code, me: 1 });
+      showGame(code, 1, p1Id, p2Id);
+    }
+  });
 }
 
 // ── Game board ─────────────────────────────────────────
 
-function showGame() {
-  const p = getP();
-  const me = parseInt(p.get('me'), 10);
-  const a = b64d(p.get('a'));
-  const b = b64d(p.get('b'));
-  const s = p.get('s') || 'default';
-  if (!a || !b || !me) { showHome(); return; }
+function showGame(code, me, p1Id, p2Id) {
+  clearListeners();
+  const myId  = me === 1 ? p1Id : p2Id;
+  const oppId = me === 1 ? p2Id : p1Id;
+  const myMon = allMon.find(m => m.id === myId);
+  const oppMon = allMon.find(m => m.id === oppId);
 
-  const myId  = me === 1 ? a : b;
-  const oppId = me === 1 ? b : a;
-  const myMon  = allMon.find(m => m.id === myId);
+  const elimKey = `gw-elim-${code}-${me}`;
+  let elim = new Set(JSON.parse(localStorage.getItem(elimKey) || '[]'));
+  let currentTurn = 1;
+  let gameOver = false;
 
-  const elimKey = `gw-elim-${s}-${me}`;
-  const turnKey = `gw-turn-${s}-${me}`;
-  let elim    = new Set(JSON.parse(localStorage.getItem(elimKey) || '[]'));
-  let myTurn  = localStorage.getItem(turnKey) !== null
-    ? localStorage.getItem(turnKey) === 'true'
-    : me === 1;
+  function saveElim() { localStorage.setItem(elimKey, JSON.stringify([...elim])); }
 
-  function save() {
-    localStorage.setItem(elimKey, JSON.stringify([...elim]));
-    localStorage.setItem(turnKey, String(myTurn));
-  }
-
-  function draw() {
-    save();
+  function drawBoard() {
+    const myTurn = currentTurn === me;
     const remaining = 151 - elim.size;
     app().innerHTML = `<div>
       <div class="my-strip">
@@ -281,64 +297,71 @@ function showGame() {
         </div>
         <div class="my-strip-count">${remaining} left</div>
       </div>
-
       <div class="turn-card ${myTurn ? 'mine' : 'theirs'}">
         <div class="label">${myTurn ? '🎯 Your turn — ask a question!' : '⏳ Opponent\'s turn'}</div>
         <div class="hint">${myTurn
-          ? 'Ask verbally, wait for the answer, then eliminate Pokémon below'
-          : 'Answer their question — they\'ll pass when done'
+          ? 'Ask verbally, wait for the answer, then eliminate below'
+          : 'Answer their question — their screen will advance when done'
         }</div>
       </div>
-
       <div class="row" style="margin-bottom:12px">
         <button class="btn" style="flex:1" onclick="_gw.passTurn()" ${myTurn ? '' : 'disabled'}>
           ${myTurn ? 'Done asking →' : 'Waiting for opponent…'}
         </button>
-        <button class="btn danger" onclick="_gw.guess(${oppId})">Guess 🎯</button>
+        <button class="btn danger" onclick="_gw.guess()">Guess 🎯</button>
       </div>
-
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Tap to eliminate · tap again to restore</div>
       ${monGridHTML(false, elim)}
     </div>`;
   }
 
-  // Attach game-specific handlers
+  function showResult(won) {
+    gameOver = true;
+    clearListeners();
+    localStorage.removeItem(elimKey);
+    app().innerHTML = `<div class="fade" style="text-align:center;padding:3rem 0">
+      <div style="font-size:3.5rem;margin-bottom:8px">${won ? '🏆' : '😔'}</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:4rem;color:${won ? 'var(--accent)' : 'var(--bad)'};text-shadow:3px 3px 0 ${won ? 'var(--accent2)' : '#900'};line-height:1">${won ? 'You win!' : 'You lost!'}</div>
+      <p class="muted small" style="margin-top:8px">It was <strong style="color:var(--accent);text-transform:capitalize">${oppMon.name}</strong>!</p>
+      <img src="${spriteUrl(oppId)}" style="width:130px;display:block;margin:16px auto" />
+      <div class="row" style="justify-content:center;margin-top:16px;flex-wrap:wrap">
+        <button class="btn hi" onclick="location.href=location.pathname">New Game</button>
+        <button class="btn" onclick="location.href='index.html'">← Quiz Home</button>
+      </div>
+    </div>`;
+  }
+
+  // Real-time listeners
+  listen(ref(db, `games/${code}/turn`), snap => {
+    const t = snap.val();
+    if (t !== null && !gameOver) { currentTurn = t; drawBoard(); }
+  });
+
+  listen(ref(db, `games/${code}/winner`), snap => {
+    const w = snap.val();
+    if (w && w !== 0 && !gameOver) showResult(w === me);
+  });
+
+  // Actions
   window._gw.elim = function(id) {
-    if (elim.has(id)) elim.delete(id);
-    else elim.add(id);
-    draw();
+    if (elim.has(id)) elim.delete(id); else elim.add(id);
+    saveElim(); drawBoard();
   };
 
   window._gw.passTurn = function() {
-    myTurn = !myTurn;
-    draw();
+    update(ref(db, `games/${code}`), { turn: me === 1 ? 2 : 1 });
   };
 
-  window._gw.guess = function(oppId) {
+  window._gw.guess = function() {
     const input = prompt(`Who is your opponent's Pokémon?\n(type the name)`);
     if (!input) return;
     const guess = input.trim().toLowerCase().replace(/\s+/g, '-');
-    const oppMon = allMon.find(m => m.id === oppId);
-    const correct = guess === oppMon.name || guess === oppMon.name.replace(/-/g, ' ');
-    if (correct) {
-      localStorage.removeItem(elimKey);
-      localStorage.removeItem(turnKey);
-      app().innerHTML = `<div class="fade" style="text-align:center;padding:3rem 0">
-        <div style="font-size:3.5rem;margin-bottom:8px">🏆</div>
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:4rem;color:var(--accent);text-shadow:3px 3px 0 var(--accent2);line-height:1">You win!</div>
-        <p class="muted small" style="margin-top:8px">It was <strong style="color:var(--accent);text-transform:capitalize">${oppMon.name}</strong>!</p>
-        <img src="${spriteUrl(oppId)}" style="width:130px;display:block;margin:16px auto" />
-        <div class="row" style="justify-content:center;margin-top:16px;flex-wrap:wrap">
-          <button class="btn hi" onclick="location.href=location.pathname">New Game</button>
-          <button class="btn" onclick="location.href='index.html'">← Quiz Home</button>
-        </div>
-      </div>`;
+    if (guess === oppMon.name || guess === oppMon.name.replace(/-/g, ' ')) {
+      update(ref(db, `games/${code}`), { winner: me });
     } else {
       toast(`"${input}" is wrong — keep asking!`, 'bad', 2500);
     }
   };
-
-  draw();
 }
 
 // ── Grid builder ───────────────────────────────────────
@@ -349,30 +372,29 @@ function monGridHTML(pickMode, elim = new Set()) {
       return `<div class="mon" id="mon-${m.id}" onclick="_gw.pick(${m.id})" title="${m.name}">
         <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
       </div>`;
-    } else {
-      const out = elim.has(m.id);
-      return `<div class="mon ${out ? 'out' : ''}" onclick="_gw.elim(${m.id})" title="${m.name}">
-        <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
-      </div>`;
     }
+    return `<div class="mon ${elim.has(m.id) ? 'out' : ''}" onclick="_gw.elim(${m.id})" title="${m.name}">
+      <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
+    </div>`;
   }).join('');
   return `<div class="mon-grid">${cells}</div>`;
 }
 
-// ── Global action namespace ────────────────────────────
+// ── Global actions ─────────────────────────────────────
 
 window._gw = {
   home: showHome,
-
-  newGame() { showPickP1(); },
-
+  newGame() {
+    const code = randCode();
+    setUrl({ code, me: 1 });
+    showPickP1(code);
+  },
   join() {
     const val = el('join-input')?.value.trim();
     if (!val) return;
     if (val.startsWith('http')) location.href = val;
     else toast('Paste the full link from Player 1', 'bad');
   },
-
   pick(id) {
     pickedId = id;
     document.querySelectorAll('.mon').forEach(m => m.classList.remove('picked'));
@@ -381,53 +403,22 @@ window._gw = {
     el('pick-name').textContent = allMon.find(m => m.id === id)?.name || '';
     el('pick-confirm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
-
-  confirmP1() {
+  async confirmP1(code) {
     if (!pickedId) return;
-    const s = randCode();
-    const encA = b64e(pickedId);
-    setUrl({ s, a: encA });
-    showWaitP1(buildUrl({ s, a: encA }));
+    await set(ref(db, `games/${code}`), { p1: pickedId, turn: 1, winner: 0 });
+    showWaitP1(code, pickedId);
   },
-
-  confirmP2(encA) {
+  async confirmP2(code) {
     if (!pickedId) return;
-    const s = getP().get('s') || randCode();
-    const encB = b64e(pickedId);
-    showShareBack(
-      buildUrl({ s, a: encA, b: encB, me: 1 }),
-      buildUrl({ s, a: encA, b: encB, me: 2 })
-    );
+    await update(ref(db, `games/${code}`), { p2: pickedId });
+    setUrl({ code, me: 2 });
+    const snap = await get(ref(db, `games/${code}`));
+    const game = snap.val();
+    showGame(code, 2, game.p1, game.p2);
   },
-
-  receiveReturn() {
-    const val = el('p2-return')?.value.trim();
-    if (!val) return;
-    try {
-      const u = new URL(val);
-      const s = u.searchParams.get('s');
-      const a = u.searchParams.get('a');
-      const b = u.searchParams.get('b');
-      if (a && b && s) {
-        location.href = buildUrl({ s, a, b, me: 1 });
-      } else {
-        toast("Doesn't look like a valid Player 2 link", 'bad');
-      }
-    } catch { toast('Invalid URL', 'bad'); }
-  },
-
-  copy(key, btnId) {
-    copyText(urls[key], btnId);
-  },
-
-  openP2() {
-    if (urls.p2game) location.href = urls.p2game;
-  },
-
+  copy(key, btnId) { copyText(urls[key], btnId); },
   // Stubs overwritten when game loads
-  elim() {},
-  passTurn() {},
-  guess() {},
+  elim() {}, passTurn() {}, guess() {},
 };
 
 boot();
