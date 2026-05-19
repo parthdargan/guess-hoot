@@ -123,11 +123,13 @@ const TC={fire:'#c0392b',grass:'#27ae60',water:'#2980b9',electric:'#f39c12',psyc
 const DIFFS={easy:{label:'Easy',rotate:false,bw:false},medium:{label:'Medium',rotate:true,bw:false},hard:{label:'Hard',rotate:true,bw:true}};
 const HS={easy:[['type'],[]],medium:[['type'],['unrotate']],hard:[['type'],['unrotate','color']]};
 const GR=[[1,151],[152,251],[252,386],[387,493],[494,649],[650,721],[722,809],[810,905],[906,1025]];
+const SIL_CROPS={easy:[1],medium:[0.65,1],hard:[0.4,0.65,1]};
 
 let allMon=[],used=[],cur=null,guesses=[],done=false;
 let score=0,roundIdx=0,history=[],acIdx=-1;
 let diff='hard',mode='zoom';
 let offscreen=null,crop=null,rot=0,hints=new Set();
+let silOffscreen=null,silColorImg=null,silZoomLevel=0,silCrop=null;
 let enterReady=false;
 
 document.addEventListener('keydown',function(e){
@@ -175,6 +177,13 @@ function renderHome(){
         ${Object.entries(DIFFS).map(([k,v])=>`<button class="dbtn${diff===k?' active':''}" onclick="_setDiff('${k}')">${v.label}</button>`).join('')}
       </div>
     </div>
+    <div style="margin-top:16px">
+      <a href="guesswho.html" style="display:block;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);text-decoration:none;transition:border-color .15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+        <span style="font-size:1.6rem">🃏</span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:.04em;color:var(--accent);margin-left:8px">Guess Who?</span>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">2-player · pick a secret Pokémon · ask yes/no questions</div>
+      </a>
+    </div>
     <div style="margin-top:14px;font-size:11px;color:var(--muted);line-height:1.8">
       <span style="color:var(--accent)">Easy</span> — zoomed / normal &nbsp;·&nbsp;
       <span style="color:var(--accent)">Medium</span> — rotated &nbsp;·&nbsp;
@@ -204,7 +213,11 @@ function dotsHTML(){
 }
 
 function diffHintDesc(){
-  if(mode==='silhouette')return'Hint 1: type &nbsp;·&nbsp; Hint 2: generation &nbsp;·&nbsp; Hint 3: size';
+  if(mode==='silhouette'){
+    if(diff==='easy')return'Full silhouette · 3 guesses';
+    if(diff==='medium')return'Starts at 2/3 view &nbsp;·&nbsp; expands after each wrong guess';
+    return'Starts at 1/5 view &nbsp;·&nbsp; expands after each wrong guess';
+  }
   if(diff==='easy')return'Hint 1: type';
   if(diff==='medium')return'Hint 1: type &nbsp;·&nbsp; Hint 2: orientation';
   return'Hint 1: type &nbsp;·&nbsp; Hint 2+3: orientation + colour';
@@ -212,7 +225,7 @@ function diffHintDesc(){
 
 async function nextRound(){
   if(roundIdx>=ROUNDS){showResults();return;}
-  guesses=[];done=false;crop=null;rot=0;offscreen=null;hints=new Set();enterReady=false;
+  guesses=[];done=false;crop=null;rot=0;offscreen=null;hints=new Set();silOffscreen=null;silColorImg=null;silZoomLevel=0;silCrop=null;enterReady=false;
   const p=pickMon();used.push(p.id);
   const gs=document.getElementById('game-screen');
   gs.style.display='';
@@ -229,7 +242,9 @@ async function nextRound(){
     <div class="img-box" id="img-box">
       ${mode==='zoom'
         ?`<canvas id="zoom-canvas" width="${CS}" height="${CS}" style="border-radius:6px"></canvas>`
-        :`<img id="sil-img" src="" style="width:${CS}px;height:${CS}px;object-fit:contain;filter:brightness(0);transition:filter .7s ease" />`
+        :diff==='easy'
+          ?`<img id="sil-img" src="" style="width:${CS}px;height:${CS}px;object-fit:contain;filter:brightness(0);transition:filter .7s ease" />`
+          :`<canvas id="sil-canvas" width="${CS}" height="${CS}" style="border-radius:6px"></canvas>`
       }
       <span class="mode-badge">${diff}</span>
     </div>
@@ -323,15 +338,77 @@ function drawZoom(revealed){
   }
 }
 
+function pickSilCrop(img){
+  const iw=img.naturalWidth||475,ih=img.naturalHeight||475;
+  const side=Math.min(iw,ih)*0.5;
+  const probe=document.createElement('canvas');probe.width=probe.height=64;
+  const px=probe.getContext('2d'),need=Math.floor(64*64*MIN_OPAQUE);
+  for(let a=0;a<MAX_ATT;a++){
+    const sx=Math.random()*(iw-side),sy=Math.random()*(ih-side);
+    px.clearRect(0,0,64,64);px.drawImage(img,sx,sy,side,side,0,0,64,64);
+    const data=px.getImageData(0,0,64,64).data;
+    let op=0;for(let i=3;i<data.length;i+=4)if(data[i]>30)op++;
+    if(op>=need)return{sx,sy,side};
+  }
+  return{sx:(iw-side)/2,sy:(ih-side)/2,side};
+}
+
 function loadSilhouette(){
-  const img=document.getElementById('sil-img');
-  if(img)img.src=cur.img;
-  renderHints();
+  if(diff==='easy'){
+    const img=document.getElementById('sil-img');
+    if(img)img.src=cur.img;
+    renderHints();
+  }else{
+    const img=new Image();img.crossOrigin='anonymous';
+    img.onload=()=>{
+      silColorImg=img;
+      silOffscreen=document.createElement('canvas');
+      silOffscreen.width=img.naturalWidth||475;
+      silOffscreen.height=img.naturalHeight||475;
+      const ctx=silOffscreen.getContext('2d');
+      ctx.drawImage(img,0,0);
+      const id=ctx.getImageData(0,0,silOffscreen.width,silOffscreen.height);
+      const p=id.data;
+      for(let i=0;i<p.length;i+=4){if(p[i+3]>30){p[i]=0;p[i+1]=0;p[i+2]=0;}}
+      ctx.putImageData(id,0,0);
+      if(diff==='hard')silCrop=pickSilCrop(img);
+      drawSilhouetteZoom(0);
+      renderHints();
+    };
+    img.onerror=()=>{setTimeout(()=>{roundIdx++;nextRound();},1200);};
+    img.src=cur.img;
+  }
+}
+
+function drawSilhouetteZoom(level){
+  const canvas=document.getElementById('sil-canvas');
+  if(!canvas||!silOffscreen)return;
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,CS,CS);
+  const iw=silOffscreen.width,ih=silOffscreen.height;
+  if(level===0&&diff==='hard'&&silCrop){
+    const{sx,sy,side}=silCrop;
+    ctx.drawImage(silOffscreen,sx,sy,side,side,0,0,CS,CS);
+    return;
+  }
+  const crops=SIL_CROPS[diff];
+  const frac=crops[Math.min(level,crops.length-1)];
+  if(frac>=1){ctx.drawImage(silOffscreen,0,0,CS,CS);return;}
+  const cw=iw*frac,ch=ih*frac;
+  ctx.drawImage(silOffscreen,(iw-cw)/2,(ih-ch)/2,cw,ch,0,0,CS,CS);
 }
 
 function revealSilhouette(){
-  const img=document.getElementById('sil-img');
-  if(img)img.style.filter='brightness(1)';
+  if(diff==='easy'){
+    const img=document.getElementById('sil-img');
+    if(img)img.style.filter='brightness(1)';
+  }else{
+    const canvas=document.getElementById('sil-canvas');
+    if(!canvas||!silColorImg)return;
+    const ctx=canvas.getContext('2d');
+    ctx.clearRect(0,0,CS,CS);
+    ctx.drawImage(silColorImg,0,0,CS,CS);
+  }
 }
 
 function renderHints(){
@@ -345,11 +422,7 @@ function renderHints(){
     else s.push(`<div class="hint na">—</div>`);
     el.innerHTML=s.join('');
   }else{
-    const s=[];
-    s.push(hints.has('type')?`<div class="hint on">Type: ${cur.types.join(' / ')}</div>`:`<div class="hint">Hint 1: type</div>`);
-    s.push(hints.has('gen')?`<div class="hint on">Gen ${cur.gen}</div>`:`<div class="hint">Hint 2: generation</div>`);
-    s.push(hints.has('size')?`<div class="hint on">${cur.h}m · ${cur.w}kg</div>`:`<div class="hint">Hint 3: size</div>`);
-    el.innerHTML=s.join('');
+    el.innerHTML='';
   }
 }
 
@@ -359,9 +432,8 @@ function applyHints(gi){
     if(gi<sch.length)sch[gi].forEach(h=>hints.add(h));
     if(hints.has('unrotate')||hints.has('color'))drawZoom(false);
   }else{
-    if(gi===0)hints.add('type');
-    else if(gi===1)hints.add('gen');
-    else if(gi===2)hints.add('size');
+    silZoomLevel=Math.min(silZoomLevel+1,SIL_CROPS[diff].length-1);
+    if(diff!=='easy')drawSilhouetteZoom(silZoomLevel);
   }
   renderHints();
 }

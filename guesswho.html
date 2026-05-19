@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pokémon Guess Who</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    :root{
+      --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#242424;
+      --border:#2e2e2e;--text:#f0f0f0;--muted:#888;
+      --accent:#f5c518;--accent2:#e05c2a;
+      --ok:#2ecc71;--bad:#e74c3c;--radius:10px;
+    }
+    html,body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100%;}
+    #app{max-width:520px;margin:0 auto;padding:1.5rem 1rem 3rem;}
+
+    .btn{display:inline-flex;align-items:center;justify-content:center;padding:9px 18px;font-size:13px;font-family:'DM Sans',sans-serif;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;transition:all .15s;}
+    .btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent);}
+    .btn.hi{background:var(--accent);color:#000;border-color:var(--accent);font-weight:500;}
+    .btn.hi:hover{background:#e0b000;}
+    .btn.danger{border-color:var(--bad);color:var(--bad);}
+    .btn.danger:hover{background:rgba(231,76,60,.1);}
+    .btn:disabled{opacity:.4;cursor:default;}
+
+    .big-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.8rem,11vw,4.5rem);letter-spacing:.04em;line-height:.9;color:var(--accent);text-shadow:3px 3px 0 var(--accent2);}
+    .screen-title{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:.04em;color:var(--accent);}
+
+    /* Pokemon grid */
+    .mon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:3px;margin:10px 0;}
+    .mon{position:relative;aspect-ratio:1;border-radius:5px;border:2px solid transparent;cursor:pointer;background:var(--surface);transition:border-color .12s,opacity .15s;overflow:hidden;}
+    .mon img{width:100%;height:100%;object-fit:contain;display:block;}
+    .mon:hover{border-color:rgba(245,197,24,.5);}
+    .mon.picked{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:rgba(245,197,24,.08);}
+    .mon.out{opacity:.1;filter:grayscale(1);}
+    .mon.out:hover{border-color:rgba(231,76,60,.4);}
+
+    /* Turn card */
+    .turn-card{padding:12px 16px;border-radius:var(--radius);margin-bottom:10px;text-align:center;}
+    .turn-card.mine{background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.3);}
+    .turn-card.theirs{background:var(--surface);border:1px solid var(--border);}
+    .turn-card .label{font-family:'Bebas Neue',sans-serif;font-size:1.25rem;letter-spacing:.04em;}
+    .turn-card.mine .label{color:var(--accent);}
+    .turn-card.theirs .label{color:var(--muted);}
+    .turn-card .hint{font-size:12px;color:var(--muted);margin-top:3px;}
+
+    /* My pokemon strip */
+    .my-strip{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--border);margin-bottom:10px;}
+    .my-strip img{width:44px;height:44px;object-fit:contain;flex-shrink:0;}
+    .my-strip-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;}
+    .my-strip-name{font-family:'Bebas Neue',sans-serif;font-size:1.15rem;text-transform:capitalize;}
+    .my-strip-count{margin-left:auto;text-align:right;font-size:12px;color:var(--muted);}
+
+    /* Share boxes */
+    .share-box{padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--muted);word-break:break-all;line-height:1.5;margin:6px 0 8px;}
+    .field-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;}
+    input[type=text]{width:100%;height:40px;padding:0 12px;font-size:14px;font-family:'DM Sans',sans-serif;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text);}
+    input[type=text]:focus{outline:none;border-color:var(--accent);}
+
+    .gap{margin-top:16px;}
+    .gap-sm{margin-top:8px;}
+    .row{display:flex;gap:8px;align-items:center;}
+    .col{display:flex;flex-direction:column;gap:8px;}
+    .small{font-size:12px;}
+    .muted{color:var(--muted);}
+
+    /* Toast */
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:var(--radius);font-size:13px;z-index:999;pointer-events:none;transition:opacity .3s;}
+    .toast.ok{background:var(--ok);color:#000;}
+    .toast.bad{background:var(--bad);color:#fff;}
+
+    @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+    .fade{animation:fadeUp .3s ease both;}
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+'use strict';
+
+// ── State ──────────────────────────────────────────────
+let allMon = [];   // [{id, name}]
+let pickedId = null;
+
+// Stored URLs to avoid encoding them in onclick attributes
+const urls = {};
+
+// ── Helpers ────────────────────────────────────────────
+const b64e = n => btoa(String(n));
+const b64d = s => { try { return parseInt(atob(s), 10); } catch { return null; } };
+const spriteUrl = id => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+const randCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
+const el = id => document.getElementById(id);
+const app = () => el('app');
+const getP = () => new URLSearchParams(location.search);
+
+function buildUrl(params) {
+  const p = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => v != null && p.set(k, v));
+  return `${location.origin}${location.pathname}?${p}`;
+}
+function setUrl(params) {
+  history.replaceState(null, '', location.pathname + '?' + new URLSearchParams(params));
+}
+
+function toast(msg, type = 'ok', ms = 2000) {
+  document.querySelectorAll('.toast').forEach(t => t.remove());
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, ms);
+}
+
+function copyText(text, btnId, label = 'Copied!') {
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  };
+  (navigator.clipboard ? navigator.clipboard.writeText(text).catch(fallback) : Promise.resolve(fallback()))
+    .then(() => {
+      const btn = el(btnId);
+      if (btn) { const orig = btn.textContent; btn.textContent = label; setTimeout(() => btn.textContent = orig, 2000); }
+    });
+}
+
+// ── Boot ───────────────────────────────────────────────
+async function boot() {
+  app().innerHTML = `<div style="padding:3rem;text-align:center;color:var(--muted)">Loading Pokédex…</div>`;
+  try {
+    const r = await fetch('https://pokeapi.co/api/v2/pokemon?limit=151');
+    const d = await r.json();
+    allMon = d.results.map((p, i) => ({ id: i + 1, name: p.name }));
+    route();
+  } catch {
+    app().innerHTML = `<div style="padding:2rem;color:var(--bad)">Failed to load — check your connection.</div>`;
+  }
+}
+
+function route() {
+  const p = getP();
+  if (p.has('a') && p.has('b') && p.has('me')) { showGame(); return; }
+  if (p.has('a') && !p.has('me')) { showPickP2(); return; }
+  showHome();
+}
+
+// ── Screens ────────────────────────────────────────────
+
+function showHome() {
+  app().innerHTML = `<div class="fade">
+    <div style="margin-bottom:22px">
+      <div class="big-title">Pokémon<br>Guess Who</div>
+      <div class="muted small" style="margin-top:8px">Gen 1 · 151 Pokémon · 2 players</div>
+    </div>
+    <p class="muted small" style="line-height:1.7;margin-bottom:20px">
+      Each player secretly picks a Pokémon. Take turns asking yes/no questions —
+      <em>Is it a Water type? Does it evolve? Is it bigger than Pikachu?</em> —
+      and eliminate from your grid. First to guess correctly wins!
+    </p>
+    <div class="col">
+      <button class="btn hi" style="font-size:15px;padding:12px" onclick="_gw.newGame()">New Game</button>
+      <div style="text-align:center;color:var(--muted);font-size:12px">— or join with a link from Player 1 —</div>
+      <div class="row">
+        <input type="text" id="join-input" placeholder="Paste Player 1's link here" />
+        <button class="btn" onclick="_gw.join()">Join</button>
+      </div>
+    </div>
+    <div class="gap">
+      <a href="index.html" style="font-size:12px;color:var(--muted);text-decoration:underline">← Back to Quiz</a>
+    </div>
+  </div>`;
+}
+
+function showPickP1() {
+  pickedId = null;
+  app().innerHTML = `<div class="fade">
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn small" onclick="_gw.home()" style="font-size:12px;padding:5px 12px">← Back</button>
+      <span class="screen-title">Pick your Pokémon</span>
+    </div>
+    <p class="muted small" style="margin-bottom:8px">Choose carefully — and don't show your opponent! 🫣</p>
+    ${monGridHTML(true)}
+    <div id="pick-confirm" style="display:none;margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+      <div style="margin-bottom:10px">You picked: <strong id="pick-name" style="color:var(--accent);text-transform:capitalize"></strong></div>
+      <button class="btn hi" onclick="_gw.confirmP1()">Confirm & get link →</button>
+    </div>
+  </div>`;
+}
+
+function showPickP2() {
+  pickedId = null;
+  const encA = getP().get('a');
+  app().innerHTML = `<div class="fade">
+    <div style="margin-bottom:12px">
+      <div class="screen-title">You've been challenged!</div>
+      <p class="muted small" style="margin-top:4px">Pick your secret Pokémon to accept 🫣</p>
+    </div>
+    ${monGridHTML(true)}
+    <div id="pick-confirm" style="display:none;margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+      <div style="margin-bottom:10px">You picked: <strong id="pick-name" style="color:var(--accent);text-transform:capitalize"></strong></div>
+      <button class="btn hi" onclick="_gw.confirmP2('${encA}')">Confirm & get links →</button>
+    </div>
+  </div>`;
+}
+
+function showWaitP1(shareUrl) {
+  urls.p1share = shareUrl;
+  app().innerHTML = `<div class="fade">
+    <div class="screen-title" style="margin-bottom:6px">Send this to Player 2</div>
+    <p class="muted small" style="margin-bottom:10px">They'll pick their Pokémon, then send you a link back to start the game.</p>
+    <div class="share-box">${shareUrl}</div>
+    <button class="btn hi" id="btn-copy-share" onclick="_gw.copy('p1share','btn-copy-share')">Copy link</button>
+
+    <div class="gap">
+      <div class="field-label">Got Player 2's link? Paste it here to start</div>
+      <div class="row">
+        <input type="text" id="p2-return" placeholder="Paste Player 2's link…" />
+        <button class="btn" onclick="_gw.receiveReturn()">Go →</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function showShareBack(p1Url, p2Url) {
+  urls.p1game = p1Url;
+  urls.p2game = p2Url;
+  app().innerHTML = `<div class="fade">
+    <div class="screen-title" style="margin-bottom:6px">Almost ready!</div>
+    <p class="muted small" style="margin-bottom:16px">Send Player 1 their link, then open yours.</p>
+
+    <div class="field-label">Player 1's game link — send this to them</div>
+    <div class="share-box">${p1Url}</div>
+    <button class="btn" id="btn-copy-p1" onclick="_gw.copy('p1game','btn-copy-p1')" style="margin-bottom:18px">Copy Player 1's link</button>
+
+    <div class="field-label">Your game link</div>
+    <div class="share-box">${p2Url}</div>
+    <button class="btn hi" onclick="_gw.openP2()">Open my game →</button>
+  </div>`;
+}
+
+// ── Game board ─────────────────────────────────────────
+
+function showGame() {
+  const p = getP();
+  const me = parseInt(p.get('me'), 10);
+  const a = b64d(p.get('a'));
+  const b = b64d(p.get('b'));
+  const s = p.get('s') || 'default';
+  if (!a || !b || !me) { showHome(); return; }
+
+  const myId  = me === 1 ? a : b;
+  const oppId = me === 1 ? b : a;
+  const myMon  = allMon.find(m => m.id === myId);
+
+  const elimKey = `gw-elim-${s}-${me}`;
+  const turnKey = `gw-turn-${s}-${me}`;
+  let elim    = new Set(JSON.parse(localStorage.getItem(elimKey) || '[]'));
+  let myTurn  = localStorage.getItem(turnKey) !== null
+    ? localStorage.getItem(turnKey) === 'true'
+    : me === 1;
+
+  function save() {
+    localStorage.setItem(elimKey, JSON.stringify([...elim]));
+    localStorage.setItem(turnKey, String(myTurn));
+  }
+
+  function draw() {
+    save();
+    const remaining = 151 - elim.size;
+    app().innerHTML = `<div>
+      <div class="my-strip">
+        <img src="${spriteUrl(myId)}" alt="${myMon.name}" />
+        <div>
+          <div class="my-strip-label">Your Pokémon</div>
+          <div class="my-strip-name">${myMon.name}</div>
+        </div>
+        <div class="my-strip-count">${remaining} left</div>
+      </div>
+
+      <div class="turn-card ${myTurn ? 'mine' : 'theirs'}">
+        <div class="label">${myTurn ? '🎯 Your turn — ask a question!' : '⏳ Opponent\'s turn'}</div>
+        <div class="hint">${myTurn
+          ? 'Ask verbally, wait for the answer, then eliminate Pokémon below'
+          : 'Answer their question — they\'ll pass when done'
+        }</div>
+      </div>
+
+      <div class="row" style="margin-bottom:12px">
+        <button class="btn" style="flex:1" onclick="_gw.passTurn()" ${myTurn ? '' : 'disabled'}>
+          ${myTurn ? 'Done asking →' : 'Waiting for opponent…'}
+        </button>
+        <button class="btn danger" onclick="_gw.guess(${oppId})">Guess 🎯</button>
+      </div>
+
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Tap to eliminate · tap again to restore</div>
+      ${monGridHTML(false, elim)}
+    </div>`;
+  }
+
+  // Attach game-specific handlers
+  window._gw.elim = function(id) {
+    if (elim.has(id)) elim.delete(id);
+    else elim.add(id);
+    draw();
+  };
+
+  window._gw.passTurn = function() {
+    myTurn = !myTurn;
+    draw();
+  };
+
+  window._gw.guess = function(oppId) {
+    const input = prompt(`Who is your opponent's Pokémon?\n(type the name)`);
+    if (!input) return;
+    const guess = input.trim().toLowerCase().replace(/\s+/g, '-');
+    const oppMon = allMon.find(m => m.id === oppId);
+    const correct = guess === oppMon.name || guess === oppMon.name.replace(/-/g, ' ');
+    if (correct) {
+      localStorage.removeItem(elimKey);
+      localStorage.removeItem(turnKey);
+      app().innerHTML = `<div class="fade" style="text-align:center;padding:3rem 0">
+        <div style="font-size:3.5rem;margin-bottom:8px">🏆</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:4rem;color:var(--accent);text-shadow:3px 3px 0 var(--accent2);line-height:1">You win!</div>
+        <p class="muted small" style="margin-top:8px">It was <strong style="color:var(--accent);text-transform:capitalize">${oppMon.name}</strong>!</p>
+        <img src="${spriteUrl(oppId)}" style="width:130px;display:block;margin:16px auto" />
+        <div class="row" style="justify-content:center;margin-top:16px;flex-wrap:wrap">
+          <button class="btn hi" onclick="location.href=location.pathname">New Game</button>
+          <button class="btn" onclick="location.href='index.html'">← Quiz Home</button>
+        </div>
+      </div>`;
+    } else {
+      toast(`"${input}" is wrong — keep asking!`, 'bad', 2500);
+    }
+  };
+
+  draw();
+}
+
+// ── Grid builder ───────────────────────────────────────
+
+function monGridHTML(pickMode, elim = new Set()) {
+  const cells = allMon.map(m => {
+    if (pickMode) {
+      return `<div class="mon" id="mon-${m.id}" onclick="_gw.pick(${m.id})" title="${m.name}">
+        <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
+      </div>`;
+    } else {
+      const out = elim.has(m.id);
+      return `<div class="mon ${out ? 'out' : ''}" onclick="_gw.elim(${m.id})" title="${m.name}">
+        <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
+      </div>`;
+    }
+  }).join('');
+  return `<div class="mon-grid">${cells}</div>`;
+}
+
+// ── Global action namespace ────────────────────────────
+
+window._gw = {
+  home: showHome,
+
+  newGame() { showPickP1(); },
+
+  join() {
+    const val = el('join-input')?.value.trim();
+    if (!val) return;
+    if (val.startsWith('http')) location.href = val;
+    else toast('Paste the full link from Player 1', 'bad');
+  },
+
+  pick(id) {
+    pickedId = id;
+    document.querySelectorAll('.mon').forEach(m => m.classList.remove('picked'));
+    el(`mon-${id}`)?.classList.add('picked');
+    el('pick-confirm').style.display = 'block';
+    el('pick-name').textContent = allMon.find(m => m.id === id)?.name || '';
+    el('pick-confirm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  },
+
+  confirmP1() {
+    if (!pickedId) return;
+    const s = randCode();
+    const encA = b64e(pickedId);
+    setUrl({ s, a: encA });
+    showWaitP1(buildUrl({ s, a: encA }));
+  },
+
+  confirmP2(encA) {
+    if (!pickedId) return;
+    const s = getP().get('s') || randCode();
+    const encB = b64e(pickedId);
+    showShareBack(
+      buildUrl({ s, a: encA, b: encB, me: 1 }),
+      buildUrl({ s, a: encA, b: encB, me: 2 })
+    );
+  },
+
+  receiveReturn() {
+    const val = el('p2-return')?.value.trim();
+    if (!val) return;
+    try {
+      const u = new URL(val);
+      const s = u.searchParams.get('s');
+      const a = u.searchParams.get('a');
+      const b = u.searchParams.get('b');
+      if (a && b && s) {
+        location.href = buildUrl({ s, a, b, me: 1 });
+      } else {
+        toast("Doesn't look like a valid Player 2 link", 'bad');
+      }
+    } catch { toast('Invalid URL', 'bad'); }
+  },
+
+  copy(key, btnId) {
+    copyText(urls[key], btnId);
+  },
+
+  openP2() {
+    if (urls.p2game) location.href = urls.p2game;
+  },
+
+  // Stubs overwritten when game loads
+  elim() {},
+  passTurn() {},
+  guess() {},
+};
+
+boot();
+})();
+</script>
+</body>
+</html>
