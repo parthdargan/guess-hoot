@@ -384,7 +384,6 @@ async function showGame(code, me, p1Id, p2Id, poolMon, poolKey) {
     const myTurn = currentTurn === me;
     const remaining = poolMon.length - elim.size;
     app().innerHTML = `<div>
-      <div class="narrow">
         <div class="my-strip">
           <img src="${spriteUrl(myId)}" alt="${myMon.name}" />
           <div>
@@ -411,7 +410,6 @@ async function showGame(code, me, p1Id, p2Id, poolMon, poolKey) {
           <button class="btn danger" onclick="_gw.guess()">Guess 🎯</button>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Tap to eliminate · tap again to restore</div>
-      </div>
       ${monGridHTML(false, elim, poolMon, poolKey)}
     </div>`;
   }
