@@ -73,10 +73,10 @@
     .toast.bad{background:var(--bad);color:#fff;}
 
     /* Guess modal */
-    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;display:flex;flex-direction:column;padding:1rem;}
-    .modal-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;max-height:90vh;display:flex;flex-direction:column;gap:10px;}
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;display:flex;flex-direction:column;padding:0;overflow:hidden;}
+    .modal-box{background:var(--surface);border-top:1px solid var(--border);padding:14px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;margin-top:auto;max-height:92vh;border-radius:var(--radius) var(--radius) 0 0;}
     .modal-title{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:.04em;color:var(--accent);}
-    .modal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:4px;overflow-y:auto;flex:1;}
+    .modal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:4px;overflow-y:auto;flex:1;min-height:0;}
     .modal-confirm{display:flex;gap:8px;flex-shrink:0;}
 
     @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
@@ -106,8 +106,24 @@ const db = getDatabase(fbApp);
 'use strict';
 
 // ── State ──────────────────────────────────────────────
-let allMon = [];   // [{id, name}]
+let allMon = [];   // [{id, name}] — all 1025
 let pickedId = null;
+
+// ── Pool constants ─────────────────────────────────────
+const GEN_RANGES = [[1,151],[152,251],[252,386],[387,493],[494,649],[650,721],[722,809],[810,905],[906,1025]];
+const GEN_NAMES  = ['Kanto','Johto','Hoenn','Sinnoh','Unova','Kalos','Alola','Galar','Paldea'];
+const POPULAR_IDS = [1,3,4,6,7,9,25,39,52,54,59,65,79,94,130,133,143,149,150,151,196,197,257,282,376,384,445,448,658,700];
+
+function getPoolMon(game) {
+  if (!game?.pool) return allMon.slice(0, 151);
+  if (game.pool === 'popular') return allMon.filter(m => POPULAR_IDS.includes(m.id));
+  if (game.pool === 'random' && game.poolIds) return allMon.filter(m => game.poolIds.includes(m.id));
+  if (game.pool.startsWith('gen')) {
+    const [s, e] = GEN_RANGES[parseInt(game.pool.slice(3)) - 1];
+    return allMon.filter(m => m.id >= s && m.id <= e);
+  }
+  return allMon.slice(0, 151);
+}
 
 // Stored URLs to avoid encoding them in onclick attributes
 const urls = {};
@@ -161,7 +177,7 @@ function listen(dbRef, cb) { unsubscribers.push(onValue(dbRef, cb)); }
 async function boot() {
   app().innerHTML = `<div style="padding:3rem;text-align:center;color:var(--muted)">Loading Pokédex…</div>`;
   try {
-    const r = await fetch('https://pokeapi.co/api/v2/pokemon?limit=151');
+    const r = await fetch('https://pokeapi.co/api/v2/pokemon?limit=1025');
     const d = await r.json();
     allMon = d.results.map((p, i) => ({ id: i + 1, name: p.name }));
     await route();
@@ -179,18 +195,21 @@ async function route() {
   const snap = await get(ref(db, `games/${code}`));
   const game = snap.val();
 
+  const poolMon = getPoolMon(game);
+
   if (me === 1) {
-    if (!game?.p1) { showPickP1(code); return; }
-    if (!game?.p2) { showWaitP1(code, game.p1); return; }
-    showGame(code, 1, game.p1, game.p2);
+    if (!game?.pool) { showPoolSelect(code); return; }
+    if (!game?.p1)   { showPickP1(code, poolMon); return; }
+    if (!game?.p2)   { showWaitP1(code, game.p1, poolMon); return; }
+    showGame(code, 1, game.p1, game.p2, poolMon);
   } else if (me === 2) {
     if (!game?.p1 || !game?.p2) { showHome(); return; }
-    showGame(code, 2, game.p1, game.p2);
+    showGame(code, 2, game.p1, game.p2, poolMon);
   } else {
     // P2 joining via shared link
     if (!game?.p1) { toast('Game not found — ask Player 1 for a new link', 'bad', 3000); showHome(); return; }
-    if (game?.p2) { setUrl({ code, me: 2 }); showGame(code, 2, game.p1, game.p2); return; }
-    showPickP2(code);
+    if (game?.p2)  { setUrl({ code, me: 2 }); showGame(code, 2, game.p1, game.p2, poolMon); return; }
+    showPickP2(code, poolMon);
   }
 }
 
@@ -201,7 +220,7 @@ function showHome() {
   app().innerHTML = `<div class="fade">
     <div style="margin-bottom:22px">
       <div class="big-title">Pokémon<br>Guess Who</div>
-      <div class="muted small" style="margin-top:8px">Gen 1 · 151 Pokémon · 2 players</div>
+      <div class="muted small" style="margin-top:8px">All generations · 2 players</div>
     </div>
     <p class="muted small" style="line-height:1.7;margin-bottom:20px">
       Each player secretly picks a Pokémon. Take turns asking yes/no questions —
@@ -222,7 +241,39 @@ function showHome() {
   </div>`;
 }
 
-function showPickP1(code) {
+function showPoolSelect(code) {
+  app().innerHTML = `<div class="fade">
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn" onclick="_gw.home()" style="font-size:12px;padding:5px 12px">← Back</button>
+      <span class="screen-title">Choose a pool</span>
+    </div>
+    <p class="muted small" style="margin-bottom:16px">Player 1 picks the pool — both players will see the same Pokémon.</p>
+
+    <div class="field-label" style="margin-bottom:8px">Quick picks</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px">
+      <button class="btn hi" style="flex-direction:column;height:60px;gap:2px" onclick="_gw.selectPool('${code}','popular')">
+        <span>⭐ Popular 30</span>
+        <span style="font-size:10px;font-weight:400;opacity:.75">Fan favorites, all gens</span>
+      </button>
+      <button class="btn" style="flex-direction:column;height:60px;gap:2px" onclick="_gw.selectPool('${code}','random')">
+        <span>🎲 Random 30</span>
+        <span style="font-size:10px;color:var(--muted)">Surprise from all gens</span>
+      </button>
+    </div>
+
+    <div class="field-label" style="margin-bottom:8px">By generation</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+      ${GEN_RANGES.map(([s,e],i) => `
+        <button class="btn" style="flex-direction:column;padding:10px 6px;gap:2px" onclick="_gw.selectPool('${code}','gen${i+1}')">
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:.04em;color:var(--accent)">Gen ${i+1}</span>
+          <span style="font-size:10px;color:var(--muted)">${GEN_NAMES[i]}</span>
+          <span style="font-size:10px;color:var(--muted)">${e-s+1} Pokémon</span>
+        </button>`).join('')}
+    </div>
+  </div>`;
+}
+
+function showPickP1(code, poolMon) {
   pickedId = null;
   app().innerHTML = `<div class="fade">
     <div class="row" style="margin-bottom:12px">
@@ -230,7 +281,7 @@ function showPickP1(code) {
       <span class="screen-title">Pick your Pokémon</span>
     </div>
     <p class="muted small" style="margin-bottom:8px">Choose carefully — and don't show your opponent! 🫣</p>
-    ${monGridHTML(true)}
+    ${monGridHTML(true, new Set(), poolMon)}
     <div id="pick-confirm" style="display:none;margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
       <div style="margin-bottom:10px">You picked: <strong id="pick-name" style="color:var(--accent);text-transform:capitalize"></strong></div>
       <button class="btn hi" onclick="_gw.confirmP1('${code}')">Confirm & get link →</button>
@@ -238,14 +289,14 @@ function showPickP1(code) {
   </div>`;
 }
 
-function showPickP2(code) {
+function showPickP2(code, poolMon) {
   pickedId = null;
   app().innerHTML = `<div class="fade">
     <div style="margin-bottom:12px">
       <div class="screen-title">You've been challenged!</div>
       <p class="muted small" style="margin-top:4px">Pick your secret Pokémon to accept 🫣</p>
     </div>
-    ${monGridHTML(true)}
+    ${monGridHTML(true, new Set(), poolMon)}
     <div id="pick-confirm" style="display:none;margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
       <div style="margin-bottom:10px">You picked: <strong id="pick-name" style="color:var(--accent);text-transform:capitalize"></strong></div>
       <button class="btn hi" onclick="_gw.confirmP2('${code}')">Ready — start game →</button>
@@ -253,7 +304,7 @@ function showPickP2(code) {
   </div>`;
 }
 
-function showWaitP1(code, p1Id) {
+function showWaitP1(code, p1Id, poolMon) {
   clearListeners();
   const shareUrl = buildUrl({ code });
   urls.p1share = shareUrl;
@@ -265,20 +316,19 @@ function showWaitP1(code, p1Id) {
     <div style="text-align:center;color:var(--muted);font-size:12px">⏳ Waiting for Player 2 to join…</div>
   </div>`;
 
-  // Auto-advance when P2 picks
   listen(ref(db, `games/${code}/p2`), snap => {
     const p2Id = snap.val();
     if (p2Id) {
       clearListeners();
       setUrl({ code, me: 1 });
-      showGame(code, 1, p1Id, p2Id);
+      showGame(code, 1, p1Id, p2Id, poolMon);
     }
   });
 }
 
 // ── Game board ─────────────────────────────────────────
 
-function showGame(code, me, p1Id, p2Id) {
+function showGame(code, me, p1Id, p2Id, poolMon) {
   clearListeners();
   const myId  = me === 1 ? p1Id : p2Id;
   const oppId = me === 1 ? p2Id : p1Id;
@@ -294,7 +344,7 @@ function showGame(code, me, p1Id, p2Id) {
 
   function drawBoard() {
     const myTurn = currentTurn === me;
-    const remaining = 151 - elim.size;
+    const remaining = poolMon.length - elim.size;
     app().innerHTML = `<div>
       <div class="my-strip">
         <img src="${spriteUrl(myId)}" alt="${myMon.name}" />
@@ -318,7 +368,7 @@ function showGame(code, me, p1Id, p2Id) {
         <button class="btn danger" onclick="_gw.guess()">Guess 🎯</button>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Tap to eliminate · tap again to restore</div>
-      ${monGridHTML(false, elim)}
+      ${monGridHTML(false, elim, poolMon)}
     </div>`;
   }
 
@@ -362,7 +412,7 @@ function showGame(code, me, p1Id, p2Id) {
   window._gw.guess = function() {
     let guessId = null;
 
-    const candidates = allMon.filter(m => !elim.has(m.id));
+    const candidates = poolMon.filter(m => !elim.has(m.id));
     const cells = candidates.map(m => `
       <div class="mon" id="gmon-${m.id}" onclick="_gw.guessPick(${m.id})" title="${m.name}">
         <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
@@ -397,7 +447,7 @@ function showGame(code, me, p1Id, p2Id) {
       if (guessId === oppMon.id) {
         update(ref(db, `games/${code}`), { winner: me });
       } else {
-        const wrong = allMon.find(m => m.id === guessId);
+        const wrong = poolMon.find(m => m.id === guessId);
         toast(`Not ${wrong.name}! Turn passes to opponent.`, 'bad', 2500);
         update(ref(db, `games/${code}`), { turn: me === 1 ? 2 : 1 });
       }
@@ -407,8 +457,8 @@ function showGame(code, me, p1Id, p2Id) {
 
 // ── Grid builder ───────────────────────────────────────
 
-function monGridHTML(pickMode, elim = new Set()) {
-  const cells = allMon.map(m => {
+function monGridHTML(pickMode, elim = new Set(), poolMon = allMon.slice(0,151)) {
+  const cells = poolMon.map(m => {
     if (pickMode) {
       return `<div class="mon" id="mon-${m.id}" onclick="_gw.pick(${m.id})" title="${m.name}">
         <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
@@ -428,7 +478,16 @@ window._gw = {
   newGame() {
     const code = randCode();
     setUrl({ code, me: 1 });
-    showPickP1(code);
+    showPoolSelect(code);
+  },
+  async selectPool(code, poolKey) {
+    const data = { pool: poolKey, turn: 1, winner: 0 };
+    if (poolKey === 'random') {
+      const shuffled = [...allMon].sort(() => Math.random() - 0.5);
+      data.poolIds = shuffled.slice(0, 30).map(m => m.id);
+    }
+    await set(ref(db, `games/${code}`), data);
+    showPickP1(code, getPoolMon(data));
   },
   join() {
     const val = el('join-input')?.value.trim();
@@ -446,8 +505,9 @@ window._gw = {
   },
   async confirmP1(code) {
     if (!pickedId) return;
-    await set(ref(db, `games/${code}`), { p1: pickedId, turn: 1, winner: 0 });
-    showWaitP1(code, pickedId);
+    await update(ref(db, `games/${code}`), { p1: pickedId });
+    const snap = await get(ref(db, `games/${code}`));
+    showWaitP1(code, pickedId, getPoolMon(snap.val()));
   },
   async confirmP2(code) {
     if (!pickedId) return;
@@ -455,7 +515,7 @@ window._gw = {
     setUrl({ code, me: 2 });
     const snap = await get(ref(db, `games/${code}`));
     const game = snap.val();
-    showGame(code, 2, game.p1, game.p2);
+    showGame(code, 2, game.p1, game.p2, getPoolMon(game));
   },
   copy(key, btnId) { copyText(urls[key], btnId); },
   // Stubs overwritten when game loads
