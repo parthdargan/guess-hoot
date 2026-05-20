@@ -52,10 +52,10 @@
 
     /* My pokemon strip */
     .my-strip{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--border);margin-bottom:10px;}
-    .my-strip img{width:44px;height:44px;object-fit:contain;flex-shrink:0;}
-    .my-strip-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;}
-    .my-strip-name{font-family:'Bebas Neue',sans-serif;font-size:1.15rem;text-transform:capitalize;}
-    .my-strip-count{margin-left:auto;text-align:right;font-size:12px;color:var(--muted);}
+    .my-strip img{object-fit:contain;flex-shrink:0;}
+    .my-strip-label{text-transform:uppercase;letter-spacing:.07em;color:var(--muted);}
+    .my-strip-name{font-family:'Bebas Neue',sans-serif;text-transform:capitalize;line-height:1.1;}
+    .my-strip-count{margin-left:auto;text-align:right;color:var(--muted);}
 
     /* Share boxes */
     .share-box{padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--muted);word-break:break-all;line-height:1.5;margin:6px 0 8px;}
@@ -383,18 +383,25 @@ async function showGame(code, me, p1Id, p2Id, poolMon, poolKey) {
   function drawBoard() {
     const myTurn = currentTurn === me;
     const remaining = poolMon.length - elim.size;
+    // Scale strip proportionally to the grid icon size
+    const cellSize = poolMon.length === 30
+      ? Math.floor(((document.getElementById('app')?.offsetWidth || window.innerWidth) - 32) / 10)
+      : gridIconSize(poolMon.length);
+    const imgSize  = Math.max(44, Math.min(96, Math.round(cellSize * 0.72)));
+    const nameSize = Math.max(1.1, Math.min(2.2, imgSize / 38)) + 'rem';
+    const metaSize = Math.max(10, Math.min(15, Math.round(imgSize * 0.18))) + 'px';
     app().innerHTML = `<div>
         <div class="my-strip">
-          <img src="${spriteUrl(myId)}" alt="${myMon.name}" />
+          <img src="${spriteUrl(myId)}" alt="${myMon.name}" style="width:${imgSize}px;height:${imgSize}px" />
           <div>
-            <div class="my-strip-label">Your Pokémon</div>
-            <div class="my-strip-name">${myMon.name}</div>
+            <div class="my-strip-label" style="font-size:${metaSize}">Your Pokémon</div>
+            <div class="my-strip-name" style="font-size:${nameSize}">${myMon.name}</div>
             <div style="display:flex;gap:4px;align-items:center;margin-top:3px;flex-wrap:wrap">
-              ${!isGenPool ? `<span style="font-size:10px;color:var(--muted)">Gen ${getGen(myId)}</span>` : ''}
+              ${!isGenPool ? `<span style="font-size:${metaSize};color:var(--muted)">Gen ${getGen(myId)}</span>` : ''}
               ${typePillsHTML(myId)}
             </div>
           </div>
-          <div class="my-strip-count">${remaining} left</div>
+          <div class="my-strip-count" style="font-size:${metaSize}">${remaining} left</div>
         </div>
         <div class="turn-card ${myTurn ? 'mine' : 'theirs'}">
           <div class="label">${myTurn ? '🎯 Your turn — ask a question!' : '⏳ Opponent\'s turn'}</div>
