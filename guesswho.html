@@ -32,6 +32,8 @@
 
     /* Pokemon grid */
     .mon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:4px;margin:10px 0;}
+    .mon-grid-30{grid-template-columns:repeat(5,1fr) !important;}
+    @media(max-width:480px){.mon-grid-30{grid-template-columns:repeat(3,1fr) !important;}}
     .mon{position:relative;aspect-ratio:1;border-radius:5px;border:2px solid transparent;cursor:pointer;background:var(--surface);transition:border-color .12s,opacity .15s;overflow:hidden;}
     .mon img{width:100%;height:100%;object-fit:contain;display:block;}
     .mon:hover{border-color:rgba(245,197,24,.5);}
@@ -513,7 +515,8 @@ function gridIconSize(poolSize) {
 
 function monGridHTML(pickMode, elim = new Set(), poolMon = allMon.slice(0,151), poolKey = '') {
   const isGenPool = poolKey && poolKey.startsWith('gen');
-  const iconSize = gridIconSize(poolMon.length);
+  const is30 = poolMon.length === 30;
+  const iconSize = is30 ? null : gridIconSize(poolMon.length);
   const cells = poolMon.map(m => {
     if (pickMode) {
       return `<div class="mon" id="mon-${m.id}" onclick="_gw.pick(${m.id})" title="${m.name}">
@@ -531,7 +534,8 @@ function monGridHTML(pickMode, elim = new Set(), poolMon = allMon.slice(0,151), 
       </div>
     </div>`;
   }).join('');
-  return `<div class="mon-grid" style="grid-template-columns:repeat(auto-fill,minmax(${iconSize}px,1fr))">${cells}</div>`;
+  const gridStyle = is30 ? '' : ` style="grid-template-columns:repeat(auto-fill,minmax(${iconSize}px,1fr))"`;
+  return `<div class="mon-grid${is30 ? ' mon-grid-30' : ''}"${gridStyle}>${cells}</div>`;
 }
 
 // ── Global actions ─────────────────────────────────────
