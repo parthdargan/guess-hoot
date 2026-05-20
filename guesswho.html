@@ -505,8 +505,15 @@ async function showGame(code, me, p1Id, p2Id, poolMon, poolKey) {
 
 // ── Grid builder ───────────────────────────────────────
 
+function gridIconSize(poolSize) {
+  const w = (document.getElementById('app')?.offsetWidth || window.innerWidth) - 32;
+  const targetCols = Math.ceil(Math.sqrt(poolSize) * Math.min(2, Math.sqrt(w / 400)));
+  return Math.max(62, Math.floor(w / targetCols));
+}
+
 function monGridHTML(pickMode, elim = new Set(), poolMon = allMon.slice(0,151), poolKey = '') {
   const isGenPool = poolKey && poolKey.startsWith('gen');
+  const iconSize = gridIconSize(poolMon.length);
   const cells = poolMon.map(m => {
     if (pickMode) {
       return `<div class="mon" id="mon-${m.id}" onclick="_gw.pick(${m.id})" title="${m.name}">
@@ -524,7 +531,7 @@ function monGridHTML(pickMode, elim = new Set(), poolMon = allMon.slice(0,151), 
       </div>
     </div>`;
   }).join('');
-  return `<div class="mon-grid">${cells}</div>`;
+  return `<div class="mon-grid" style="grid-template-columns:repeat(auto-fill,minmax(${iconSize}px,1fr))">${cells}</div>`;
 }
 
 // ── Global actions ─────────────────────────────────────
