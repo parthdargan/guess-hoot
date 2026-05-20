@@ -72,6 +72,11 @@
     .toast.ok{background:var(--ok);color:#000;}
     .toast.bad{background:var(--bad);color:#fff;}
 
+    /* Hover tooltip */
+    .mon-tip{position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);background:#111;border:1px solid var(--border);border-radius:7px;padding:6px 8px;font-size:11px;white-space:nowrap;z-index:50;pointer-events:none;opacity:0;transition:opacity .15s;text-align:center;line-height:1.5;}
+    .mon:hover .mon-tip{opacity:1;}
+    .type-pill{font-size:9px;padding:1px 6px;border-radius:8px;color:#fff;display:inline-block;}
+
     /* Guess modal */
     .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;display:flex;flex-direction:column;padding:0;overflow:hidden;}
     .modal-box{background:var(--surface);border-top:1px solid var(--border);padding:14px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;margin-top:auto;max-height:92vh;border-radius:var(--radius) var(--radius) 0 0;}
@@ -113,6 +118,22 @@ let pickedId = null;
 const GEN_RANGES = [[1,151],[152,251],[252,386],[387,493],[494,649],[650,721],[722,809],[810,905],[906,1025]];
 const GEN_NAMES  = ['Kanto','Johto','Hoenn','Sinnoh','Unova','Kalos','Alola','Galar','Paldea'];
 const POPULAR_IDS = [1,3,4,6,7,9,25,39,52,54,59,65,79,94,130,133,143,149,150,151,196,197,257,282,376,384,445,448,658,700];
+const TC = {fire:'#c0392b',grass:'#27ae60',water:'#2980b9',electric:'#f39c12',psychic:'#8e44ad',ice:'#3498db',dragon:'#6c3483',dark:'#2c3e50',fairy:'#e91e8c',normal:'#7f8c8d',fighting:'#c0392b',flying:'#85c1e9',poison:'#8e44ad',ground:'#d35400',rock:'#7f8c8d',bug:'#27ae60',ghost:'#6c3483',steel:'#566573'};
+const getGen = id => { for(let i=0;i<GEN_RANGES.length;i++){const[s,e]=GEN_RANGES[i];if(id>=s&&id<=e)return i+1;} return '?'; };
+
+// ── Type cache ─────────────────────────────────────────
+const monTypes = new Map(); // id -> ['fire', 'flying', ...]
+async function loadPoolTypes(poolMon) {
+  const missing = poolMon.filter(m => !monTypes.has(m.id));
+  if (!missing.length) return;
+  await Promise.all(missing.map(async m => {
+    try {
+      const r = await fetch(`https://pokeapi.co/api/v2/pokemon/${m.id}`);
+      const d = await r.json();
+      monTypes.set(m.id, d.types.map(t => t.type.name));
+    } catch { monTypes.set(m.id, []); }
+  }));
+}
 
 function getPoolMon(game) {
   if (!game?.pool) return allMon.slice(0, 151);
@@ -197,18 +218,20 @@ async function route() {
 
   const poolMon = getPoolMon(game);
 
+  const poolKey = game?.pool || 'gen1';
+
   if (me === 1) {
     if (!game?.pool) { showPoolSelect(code); return; }
     if (!game?.p1)   { showPickP1(code, poolMon); return; }
-    if (!game?.p2)   { showWaitP1(code, game.p1, poolMon); return; }
-    showGame(code, 1, game.p1, game.p2, poolMon);
+    if (!game?.p2)   { showWaitP1(code, game.p1, poolMon, poolKey); return; }
+    showGame(code, 1, game.p1, game.p2, poolMon, poolKey);
   } else if (me === 2) {
     if (!game?.p1 || !game?.p2) { showHome(); return; }
-    showGame(code, 2, game.p1, game.p2, poolMon);
+    showGame(code, 2, game.p1, game.p2, poolMon, poolKey);
   } else {
     // P2 joining via shared link
     if (!game?.p1) { toast('Game not found — ask Player 1 for a new link', 'bad', 3000); showHome(); return; }
-    if (game?.p2)  { setUrl({ code, me: 2 }); showGame(code, 2, game.p1, game.p2, poolMon); return; }
+    if (game?.p2)  { setUrl({ code, me: 2 }); showGame(code, 2, game.p1, game.p2, poolMon, poolKey); return; }
     showPickP2(code, poolMon);
   }
 }
@@ -304,7 +327,7 @@ function showPickP2(code, poolMon) {
   </div>`;
 }
 
-function showWaitP1(code, p1Id, poolMon) {
+function showWaitP1(code, p1Id, poolMon, poolKey) {
   clearListeners();
   const shareUrl = buildUrl({ code });
   urls.p1share = shareUrl;
@@ -321,15 +344,19 @@ function showWaitP1(code, p1Id, poolMon) {
     if (p2Id) {
       clearListeners();
       setUrl({ code, me: 1 });
-      showGame(code, 1, p1Id, p2Id, poolMon);
+      showGame(code, 1, p1Id, p2Id, poolMon, poolKey);
     }
   });
 }
 
 // ── Game board ─────────────────────────────────────────
 
-function showGame(code, me, p1Id, p2Id, poolMon) {
+async function showGame(code, me, p1Id, p2Id, poolMon, poolKey) {
   clearListeners();
+  app().innerHTML = `<div style="padding:2rem;text-align:center;color:var(--muted)">Preparing game…</div>`;
+  await loadPoolTypes(poolMon);
+
+  const isGenPool = poolKey && poolKey.startsWith('gen');
   const myId  = me === 1 ? p1Id : p2Id;
   const oppId = me === 1 ? p2Id : p1Id;
   const myMon = allMon.find(m => m.id === myId);
@@ -342,6 +369,12 @@ function showGame(code, me, p1Id, p2Id, poolMon) {
 
   function saveElim() { localStorage.setItem(elimKey, JSON.stringify([...elim])); }
 
+  function typePillsHTML(id) {
+    return (monTypes.get(id) || []).map(t =>
+      `<span class="type-pill" style="background:${TC[t]||'#555'}">${t}</span>`
+    ).join(' ');
+  }
+
   function drawBoard() {
     const myTurn = currentTurn === me;
     const remaining = poolMon.length - elim.size;
@@ -351,6 +384,10 @@ function showGame(code, me, p1Id, p2Id, poolMon) {
         <div>
           <div class="my-strip-label">Your Pokémon</div>
           <div class="my-strip-name">${myMon.name}</div>
+          <div style="display:flex;gap:4px;align-items:center;margin-top:3px;flex-wrap:wrap">
+            ${!isGenPool ? `<span style="font-size:10px;color:var(--muted)">Gen ${getGen(myId)}</span>` : ''}
+            ${typePillsHTML(myId)}
+          </div>
         </div>
         <div class="my-strip-count">${remaining} left</div>
       </div>
@@ -368,7 +405,7 @@ function showGame(code, me, p1Id, p2Id, poolMon) {
         <button class="btn danger" onclick="_gw.guess()">Guess 🎯</button>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Tap to eliminate · tap again to restore</div>
-      ${monGridHTML(false, elim, poolMon)}
+      ${monGridHTML(false, elim, poolMon, poolKey)}
     </div>`;
   }
 
@@ -413,9 +450,15 @@ function showGame(code, me, p1Id, p2Id, poolMon) {
     let guessId = null;
 
     const candidates = poolMon.filter(m => !elim.has(m.id));
+    const iconSize = candidates.length <= 8 ? 110 : candidates.length <= 16 ? 90 : candidates.length <= 28 ? 76 : 62;
     const cells = candidates.map(m => `
-      <div class="mon" id="gmon-${m.id}" onclick="_gw.guessPick(${m.id})" title="${m.name}">
+      <div class="mon" id="gmon-${m.id}" onclick="_gw.guessPick(${m.id})">
         <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
+        <div class="mon-tip">
+          <div style="text-transform:capitalize;font-weight:500;color:var(--text)">${m.name}</div>
+          ${!isGenPool ? `<div style="color:var(--muted)">Gen ${getGen(m.id)}</div>` : ''}
+          <div style="display:flex;gap:3px;justify-content:center;margin-top:2px">${typePillsHTML(m.id)}</div>
+        </div>
       </div>`).join('');
 
     const modal = document.createElement('div');
@@ -423,8 +466,8 @@ function showGame(code, me, p1Id, p2Id, poolMon) {
     modal.innerHTML = `
       <div class="modal-box">
         <div class="modal-title">Who is it? Tap to select</div>
-        <div style="font-size:12px;color:var(--muted)">Showing ${candidates.length} non-eliminated Pokémon</div>
-        <div class="modal-grid">${cells}</div>
+        <div style="font-size:12px;color:var(--muted)">${candidates.length} remaining</div>
+        <div class="modal-grid" style="grid-template-columns:repeat(auto-fill,minmax(${iconSize}px,1fr))">${cells}</div>
         <div class="modal-confirm">
           <button class="btn" style="flex:1" onclick="_gw.guessCancel()">Cancel</button>
           <button class="btn hi" id="guess-confirm-btn" style="flex:1" onclick="_gw.guessConfirm()" disabled>Confirm guess</button>
@@ -457,15 +500,23 @@ function showGame(code, me, p1Id, p2Id, poolMon) {
 
 // ── Grid builder ───────────────────────────────────────
 
-function monGridHTML(pickMode, elim = new Set(), poolMon = allMon.slice(0,151)) {
+function monGridHTML(pickMode, elim = new Set(), poolMon = allMon.slice(0,151), poolKey = '') {
+  const isGenPool = poolKey && poolKey.startsWith('gen');
   const cells = poolMon.map(m => {
     if (pickMode) {
       return `<div class="mon" id="mon-${m.id}" onclick="_gw.pick(${m.id})" title="${m.name}">
         <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
       </div>`;
     }
-    return `<div class="mon ${elim.has(m.id) ? 'out' : ''}" onclick="_gw.elim(${m.id})" title="${m.name}">
+    const types = monTypes.get(m.id) || [];
+    const pills = types.map(t => `<span class="type-pill" style="background:${TC[t]||'#555'}">${t}</span>`).join(' ');
+    return `<div class="mon ${elim.has(m.id) ? 'out' : ''}" onclick="_gw.elim(${m.id})">
       <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
+      <div class="mon-tip">
+        <div style="text-transform:capitalize;font-weight:500;color:var(--text)">${m.name}</div>
+        ${!isGenPool ? `<div style="color:var(--muted)">Gen ${getGen(m.id)}</div>` : ''}
+        ${pills ? `<div style="display:flex;gap:3px;justify-content:center;margin-top:2px">${pills}</div>` : ''}
+      </div>
     </div>`;
   }).join('');
   return `<div class="mon-grid">${cells}</div>`;
@@ -507,7 +558,7 @@ window._gw = {
     if (!pickedId) return;
     await update(ref(db, `games/${code}`), { p1: pickedId });
     const snap = await get(ref(db, `games/${code}`));
-    showWaitP1(code, pickedId, getPoolMon(snap.val()));
+    const g = snap.val(); showWaitP1(code, pickedId, getPoolMon(g), g.pool || 'gen1');
   },
   async confirmP2(code) {
     if (!pickedId) return;
@@ -515,7 +566,7 @@ window._gw = {
     setUrl({ code, me: 2 });
     const snap = await get(ref(db, `games/${code}`));
     const game = snap.val();
-    showGame(code, 2, game.p1, game.p2, getPoolMon(game));
+    showGame(code, 2, game.p1, game.p2, getPoolMon(game), game.pool || 'gen1');
   },
   copy(key, btnId) { copyText(urls[key], btnId); },
   // Stubs overwritten when game loads
