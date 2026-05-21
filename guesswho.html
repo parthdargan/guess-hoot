@@ -489,7 +489,7 @@ async function showGame(code, me, p1Id, p2Id, poolMon, poolKey) {
 
     const candidates = poolMon.filter(m => !elim.has(m.id));
     const n = candidates.length;
-    const modalCols = n <= 8 ? 4 : n <= 15 ? 5 : n <= 24 ? 6 : n <= 30 ? 10 : 8;
+    const modalCols = n <= 8 ? 4 : n <= 15 ? 5 : n <= 24 ? 6 : n <= 30 ? 10 : Math.ceil(Math.sqrt(n) * 1.5);
     const iconSize  = n <= 8 ? 110 : n <= 16 ? 90 : n <= 28 ? 76 : 62;
     const cells = candidates.map(m => `
       <div class="mon" id="gmon-${m.id}" onclick="_gw.guessPick(${m.id})">
