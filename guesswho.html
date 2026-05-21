@@ -255,21 +255,26 @@ function showHome() {
       The Pokémon guessing game for two
     </div>
 
-    <div style="display:flex;gap:12px;justify-content:center;margin-bottom:36px;flex-wrap:wrap">
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;flex:1;min-width:140px;max-width:180px">
-        <div style="font-size:1.4rem;margin-bottom:6px">🎲</div>
-        <div style="font-size:12px;font-weight:500;margin-bottom:4px">Pick your pool</div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.5">Choose a generation or a curated set of 30</div>
+    <div style="display:flex;gap:24px;justify-content:center;margin-bottom:36px;flex-wrap:wrap">
+      <div style="flex:1;min-width:120px;max-width:160px">
+        <div style="font-size:2rem;margin-bottom:8px">🎲</div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:4px">Step 1</div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:4px">Pick your pool</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.6">Choose a generation or a curated set of 30</div>
       </div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;flex:1;min-width:140px;max-width:180px">
-        <div style="font-size:1.4rem;margin-bottom:6px">🔗</div>
-        <div style="font-size:12px;font-weight:500;margin-bottom:4px">Share a link</div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.5">Send one link to your opponent — no account needed</div>
+      <div style="width:1px;background:var(--border);align-self:stretch;flex-shrink:0"></div>
+      <div style="flex:1;min-width:120px;max-width:160px">
+        <div style="font-size:2rem;margin-bottom:8px">🔗</div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:4px">Step 2</div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:4px">Share a link</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.6">Send one link to your opponent — no account needed</div>
       </div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;flex:1;min-width:140px;max-width:180px">
-        <div style="font-size:1.4rem;margin-bottom:6px">🦉</div>
-        <div style="font-size:12px;font-weight:500;margin-bottom:4px">Guess hoo it is</div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.5">Ask yes/no questions, eliminate, and make your guess</div>
+      <div style="width:1px;background:var(--border);align-self:stretch;flex-shrink:0"></div>
+      <div style="flex:1;min-width:120px;max-width:160px">
+        <div style="font-size:2rem;margin-bottom:8px">🦉</div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:4px">Step 3</div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:4px">Guess hoo it is</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.6">Ask yes/no questions, eliminate, and make your guess</div>
       </div>
     </div>
 
@@ -483,7 +488,9 @@ async function showGame(code, me, p1Id, p2Id, poolMon, poolKey) {
     let guessId = null;
 
     const candidates = poolMon.filter(m => !elim.has(m.id));
-    const iconSize = candidates.length <= 8 ? 110 : candidates.length <= 16 ? 90 : candidates.length <= 28 ? 76 : 62;
+    const n = candidates.length;
+    const modalCols = n <= 8 ? 4 : n <= 15 ? 5 : n <= 24 ? 6 : n <= 30 ? 10 : 8;
+    const iconSize  = n <= 8 ? 110 : n <= 16 ? 90 : n <= 28 ? 76 : 62;
     const cells = candidates.map(m => `
       <div class="mon" id="gmon-${m.id}" onclick="_gw.guessPick(${m.id})">
         <img src="${spriteUrl(m.id)}" alt="${m.name}" loading="lazy" />
@@ -500,7 +507,7 @@ async function showGame(code, me, p1Id, p2Id, poolMon, poolKey) {
       <div class="modal-box">
         <div class="modal-title">Who is it? Tap to select</div>
         <div style="font-size:12px;color:var(--muted)">${candidates.length} remaining</div>
-        <div class="modal-grid" style="grid-template-columns:repeat(auto-fill,minmax(${iconSize}px,1fr))">${cells}</div>
+        <div class="modal-grid" style="grid-template-columns:repeat(${modalCols},1fr)">${cells}</div>
         <div class="modal-confirm">
           <button class="btn" style="flex:1" onclick="_gw.guessCancel()">Cancel</button>
           <button class="btn hi" id="guess-confirm-btn" style="flex:1" onclick="_gw.guessConfirm()" disabled>Confirm guess</button>
