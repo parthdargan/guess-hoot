@@ -1,0 +1,4 @@
+[[redirects]]
+  from = "/"
+  to   = "/guesswho.html"
+  status = 302
