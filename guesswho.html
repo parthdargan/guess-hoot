@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Guess Hoo?</title>
+  <title>Guess Hoot!</title>
   <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/163.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -244,13 +244,20 @@ async function route() {
 
 function showHome() {
   clearListeners();
+  const isShiny = Math.random() < 1/4096;
+  const hootSrc = isShiny
+    ? 'https://play.pokemonshowdown.com/sprites/ani-shiny/hoothoot.gif'
+    : 'https://play.pokemonshowdown.com/sprites/ani/hoothoot.gif';
   app().innerHTML = `<div class="fade narrow" style="text-align:center;padding-top:2rem">
 
-    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/163.png"
-         style="width:96px;height:96px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 4px 12px rgba(245,197,24,.25))"
-         alt="Hoothoot" />
+    <div style="position:relative;display:inline-block">
+      <img src="${hootSrc}"
+           style="width:160px;height:160px;object-fit:contain;filter:drop-shadow(0 6px 16px rgba(245,197,24,.3))"
+           alt="Hoothoot" />
+      ${isShiny ? `<div style="position:absolute;top:-4px;right:-4px;font-size:1.1rem" title="You found a shiny!">✨</div>` : ''}
+    </div>
 
-    <div class="big-title" style="margin-top:4px">Guess Hoo?</div>
+    <div class="big-title" style="margin-top:4px">Guess Hoot!</div>
     <div style="color:var(--muted);font-size:14px;margin-top:8px;margin-bottom:32px;letter-spacing:.02em">
       The Pokémon guessing game for two
     </div>
