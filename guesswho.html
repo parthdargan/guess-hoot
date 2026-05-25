@@ -235,8 +235,10 @@ async function boot() {
 
 async function route() {
   const code = getP().get('code');
-  const me = parseInt(getP().get('me') || '0', 10);
   if (!code) { showHome(); return; }
+
+  // Role is stored locally — never trust the URL for player identity
+  const me = parseInt(localStorage.getItem(`gw-role-${code}`) || '0', 10);
 
   app().innerHTML = `<div style="padding:3rem;text-align:center;color:var(--muted)">Loading game…</div>`;
   const snap = await get(ref(db, `games/${code}`));
@@ -254,8 +256,9 @@ async function route() {
     if (!game?.p1 || !game?.p2) { showHome(); return; }
     showGame(code, 2, game.p1, game.p2, poolMon, poolKey);
   } else {
+    // No stored role — this is someone opening an invite link
     if (!game?.p1) { toast('Game not found — ask Player 1 for a new link', 'bad', 3000); showHome(); return; }
-    if (game?.p2)  { setUrl({ code, me: 2 }); showGame(code, 2, game.p1, game.p2, poolMon, poolKey); return; }
+    if (game?.p2)  { toast('This game is already in progress', 'bad', 3000); showHome(); return; }
     showPickP2(code, poolMon);
   }
 }
@@ -401,7 +404,7 @@ function showWaitP1(code, p1Id, poolMon, poolKey) {
     const p2Id = snap.val();
     if (p2Id) {
       clearListeners();
-      setUrl({ code, me: 1 });
+      setUrl({ code });
       showGame(code, 1, p1Id, p2Id, poolMon, poolKey);
     }
   });
@@ -420,7 +423,7 @@ function showRematchWaitP2(code) {
     // P1 has picked a new pool but no pokemon yet — go pick ours
     if (game?.pool && !game?.p1 && !game?.p2) {
       clearListeners();
-      setUrl({ code, me: 2 });
+      setUrl({ code });
       showPickP2(code, getPoolMon(game));
     }
   });
@@ -661,7 +664,8 @@ window._gw = {
   home: showHome,
   newGame() {
     const code = randCode();
-    setUrl({ code, me: 1 });
+    localStorage.setItem(`gw-role-${code}`, '1');
+    setUrl({ code });
     showPoolSelect(code);
   },
   async selectPool(code, poolKey) {
@@ -696,7 +700,8 @@ window._gw = {
   async confirmP2(code) {
     if (!pickedId) return;
     await update(ref(db, `games/${code}`), { p2: pickedId });
-    setUrl({ code, me: 2 });
+    localStorage.setItem(`gw-role-${code}`, '2');
+    setUrl({ code });
     const snap = await get(ref(db, `games/${code}`));
     const game = snap.val();
     showGame(code, 2, game.p1, game.p2, getPoolMon(game), game.pool || 'gen1');
