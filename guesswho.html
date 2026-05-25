@@ -257,8 +257,9 @@ async function route() {
     showGame(code, 2, game.p1, game.p2, poolMon, poolKey);
   } else {
     // No stored role — this is someone opening an invite link
-    if (!game?.p1) { toast('Game not found — ask Player 1 for a new link', 'bad', 3000); showHome(); return; }
-    if (game?.p2)  { toast('This game is already in progress', 'bad', 3000); showHome(); return; }
+    if (!game?.pool) { toast('Game not found — ask Player 1 for a new link', 'bad', 3000); showHome(); return; }
+    if (game?.p2)    { toast('This game is already in progress', 'bad', 3000); showHome(); return; }
+    if (!game?.p1)   { showWaitForP1Setup(code); return; }  // P1 still picking their Pokémon
     showPickP2(code, poolMon);
   }
 }
@@ -406,6 +407,22 @@ function showWaitP1(code, p1Id, poolMon, poolKey) {
       clearListeners();
       setUrl({ code });
       showGame(code, 1, p1Id, p2Id, poolMon, poolKey);
+    }
+  });
+}
+
+function showWaitForP1Setup(code) {
+  clearListeners();
+  app().innerHTML = `<div class="fade narrow" style="text-align:center;padding:3rem 0">
+    <img src="https://img.pokemondb.net/sprites/black-white/anim/normal/hoothoot.gif" style="height:100px;width:auto" alt="Hoothoot" />
+    <div style="margin-top:16px;color:var(--muted);font-size:14px;line-height:1.6">
+      Almost there…<br>Waiting for Player 1 to finish setting up.
+    </div>
+  </div>`;
+  listen(ref(db, `games/${code}/p1`), snap => {
+    if (snap.val()) {
+      clearListeners();
+      route(); // re-run routing now that p1 is confirmed
     }
   });
 }
