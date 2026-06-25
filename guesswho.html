@@ -253,7 +253,8 @@ async function route() {
     if (!game?.p2)   { showWaitP1(code, game.p1, poolMon, poolKey); return; }
     showGame(code, 1, game.p1, game.p2, poolMon, poolKey);
   } else if (me === 2) {
-    if (!game?.p1 || !game?.p2) { showHome(); return; }
+    if (!game?.p1)  { showHome(); return; }
+    if (!game?.p2)  { showPickP2(code, poolMon); return; } // mid-pick or rematch
     showGame(code, 2, game.p1, game.p2, poolMon, poolKey);
   } else {
     // No stored role — this is someone opening an invite link
@@ -691,8 +692,13 @@ window._gw = {
       const shuffled = [...allMon].sort(() => Math.random() - 0.5);
       data.poolIds = shuffled.slice(0, 30).map(m => m.id);
     }
-    await set(ref(db, `games/${code}`), data);
-    showPickP1(code, getPoolMon(data));
+    try {
+      await set(ref(db, `games/${code}`), data);
+      showPickP1(code, getPoolMon(data));
+    } catch (e) {
+      console.error('selectPool failed:', e);
+      toast('Connection error — check your network and try again.', 'bad', 3500);
+    }
   },
   join() {
     const val = el('join-input')?.value.trim();
