@@ -133,7 +133,7 @@ const firebaseConfig = {
 const fbApp = initializeApp(firebaseConfig);
 const db = getDatabase(fbApp);
 const auth = getAuth(fbApp);
-signInAnonymously(auth);
+const authReady = signInAnonymously(auth);
 
 (function(){
 'use strict';
@@ -726,6 +726,7 @@ window._gw = {
     showPoolSelect(code);
   },
   async selectPool(code, poolKey) {
+    await authReady;
     const data = { pool: poolKey, turn: 1, winner: 0, createdAt: Date.now() };
     if (poolKey === 'random') {
       const shuffled = [...allMon].sort(() => Math.random() - 0.5);
