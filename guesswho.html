@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Guess Hoot!</title>
   <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/163.png">
+
+  <!-- Social sharing -->
+  <meta property="og:title" content="Guess Hoot! — The Pokémon guessing game for two" />
+  <meta property="og:description" content="Pick a secret Pokémon, share a link, and guess your opponent's pick. No app, no account — just open and play." />
+  <meta property="og:image" content="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/163.png" />
+  <meta property="og:url" content="https://guesshoothoot.com" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Guess Hoot! — The Pokémon guessing game for two" />
+  <meta name="twitter:description" content="Pick a secret Pokémon, share a link, and guess your opponent's pick. No app, no account — just open and play." />
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/163.png" />
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
@@ -399,10 +411,20 @@ function showWaitP1(code, p1Id, poolMon, poolKey) {
   urls.p1share = shareUrl;
   app().innerHTML = `<div class="fade">
     <div class="screen-title" style="margin-bottom:6px">Waiting for Player 2…</div>
-    <p class="muted small" style="margin-bottom:12px">Send them this link. The game will start automatically once they pick their Pokémon.</p>
-    <div class="share-box">${shareUrl}</div>
-    <button class="btn hi" id="btn-copy-share" onclick="_gw.copy('p1share','btn-copy-share')" style="margin-bottom:20px">Copy link</button>
-    <div style="text-align:center;color:var(--muted);font-size:12px">⏳ Waiting for Player 2 to join…</div>
+    <p class="muted small" style="margin-bottom:12px">Share the link or just read out the code — either works.</p>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+      <div style="flex:1">
+        <div class="field-label">Game code</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:2.4rem;letter-spacing:.12em;color:var(--accent);line-height:1">${code}</div>
+      </div>
+      <div style="width:1px;background:var(--border);align-self:stretch"></div>
+      <div style="flex:2">
+        <div class="field-label">Invite link</div>
+        <div class="share-box" style="margin:4px 0 6px">${shareUrl}</div>
+        <button class="btn hi" id="btn-copy-share" onclick="_gw.copy('p1share','btn-copy-share')">Copy link</button>
+      </div>
+    </div>
+    <div style="text-align:center;color:var(--muted);font-size:12px;margin-top:12px">⏳ Waiting for Player 2 to join…</div>
   </div>`;
 
   listen(ref(db, `games/${code}/p2`), snap => {
@@ -706,8 +728,12 @@ window._gw = {
   join() {
     const val = el('join-input')?.value.trim();
     if (!val) return;
-    if (val.startsWith('http')) location.href = val;
-    else toast('Paste the full link from Player 1', 'bad');
+    if (val.startsWith('http')) { location.href = val; return; }
+    if (/^[A-Z0-9]{4,8}$/i.test(val)) {
+      location.href = `${location.pathname}?code=${val.toUpperCase()}`;
+      return;
+    }
+    toast('Paste the invite link or enter the game code', 'bad');
   },
   pick(id) {
     pickedId = id;
