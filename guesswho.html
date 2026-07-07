@@ -133,7 +133,7 @@ const firebaseConfig = {
 const fbApp = initializeApp(firebaseConfig);
 const db = getDatabase(fbApp);
 const auth = getAuth(fbApp);
-const authReady = signInAnonymously(auth);
+let authReady = signInAnonymously(auth).catch(() => null);
 
 (function(){
 'use strict';
@@ -726,7 +726,9 @@ window._gw = {
     showPoolSelect(code);
   },
   async selectPool(code, poolKey) {
-    await authReady;
+    try {
+      if (!auth.currentUser) await (authReady = signInAnonymously(auth).catch(() => null));
+    } catch (e) { /* proceed anyway, Firebase write will surface the real error */ }
     const data = { pool: poolKey, turn: 1, winner: 0, createdAt: Date.now() };
     if (poolKey === 'random') {
       const shuffled = [...allMon].sort(() => Math.random() - 0.5);
