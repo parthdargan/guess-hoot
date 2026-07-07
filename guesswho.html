@@ -117,7 +117,7 @@
 <div id="app"></div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, set, get, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getDatabase, ref, set, get, onValue, update, query, orderByChild, endBefore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
@@ -701,6 +701,19 @@ function monGridHTML(pickMode, elim = new Set(), poolMon = allMon.slice(0,151), 
   return `<div class="mon-grid${is30 ? ' mon-grid-30' : ''}${guessMode ? ' guess-mode' : ''}"${gridStyle}>${cells}</div>`;
 }
 
+// ── Cleanup ─────────────────────────────────────────────
+
+async function cleanOldGames() {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  try {
+    const snap = await get(query(ref(db, 'games'), orderByChild('createdAt'), endBefore(cutoff)));
+    if (!snap.exists()) return;
+    const updates = {};
+    snap.forEach(child => { updates[child.key] = null; });
+    await update(ref(db, 'games'), updates);
+  } catch (e) { /* best-effort */ }
+}
+
 // ── Global actions ─────────────────────────────────────
 
 window._gw = {
@@ -709,10 +722,11 @@ window._gw = {
     const code = randCode();
     localStorage.setItem(`gw-role-${code}`, '1');
     setUrl({ code });
+    cleanOldGames();
     showPoolSelect(code);
   },
   async selectPool(code, poolKey) {
-    const data = { pool: poolKey, turn: 1, winner: 0 };
+    const data = { pool: poolKey, turn: 1, winner: 0, createdAt: Date.now() };
     if (poolKey === 'random') {
       const shuffled = [...allMon].sort(() => Math.random() - 0.5);
       data.poolIds = shuffled.slice(0, 30).map(m => m.id);
